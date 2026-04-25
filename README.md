@@ -1,58 +1,23 @@
-<p align="center">
-  <h1 align="center">🔍 RAG Pipeline</h1>
-  <p align="center">
-    A modular, production-ready Retrieval-Augmented Generation system with hybrid search, citation enforcement, and automated faithfulness evaluation.
-  </p>
-  <p align="center">
-    <a href="#quick-start">Quick Start</a> •
-    <a href="#architecture">Architecture</a> •
-    <a href="#phases">Phases</a> •
-    <a href="#evaluation">Evaluation</a> •
-    <a href="#ci-integration">CI</a>
-  </p>
-</p>
+# RAG Pipeline
 
----
-
-## ✨ Features
-
-| Feature | Description |
-|---------|-------------|
-| **Sliding-window chunking** | 500–800 token chunks with configurable overlap |
-| **Pluggable vector stores** | ChromaDB (local) or Weaviate — swap with one config change |
-| **Hybrid retrieval** | BM25 keyword search fused with dense vector similarity |
-| **Cross-encoder reranking** | `ms-marco-MiniLM-L-6-v2` rescoring for precision |
-| **Citation enforcement** | Validates inline citations post-generation, retries on violation |
-| **LLM-as-judge evaluation** | Faithfulness, relevance, recall & citation coverage scoring |
-| **CI quality gate** | GitHub Actions workflow that blocks merges on metric regressions |
-
----
+A modular Retrieval-Augmented Generation system with hybrid search, citation enforcement, and automated faithfulness evaluation. Built as the foundation for an MCP-powered agentic RAG system.
 
 ## Quick Start
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/Vishisht3/mcp-rag-pipeline.git
 cd mcp-rag-pipeline
 
-# 2. Create a virtual environment
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Set your OpenAI API key
 echo "OPENAI_API_KEY=sk-..." > .env
 
-# 5. Run the demo
-python main.py
-
-# Retrieval-only mode (no API key needed)
-python main.py --retrieval-only
+python main.py                   # full RAG (requires API key)
+python main.py --retrieval-only  # retrieval only, no API key needed
 ```
-
----
 
 ## Architecture
 
@@ -60,41 +25,37 @@ python main.py --retrieval-only
 rag_pipeline/
 ├── config/
 │   ├── loader.py              # Typed Pydantic config model
-│   ├── phase1.yaml            # Phase 1 config
-│   ├── phase2.yaml            # Phase 2 config (hybrid + rerank)
-│   └── phase3.yaml            # Phase 3 config (eval + CI)
+│   ├── phase1.yaml            # Phase 1: core RAG
+│   ├── phase2.yaml            # Phase 2: hybrid search + reranking
+│   └── phase3.yaml            # Phase 3: evaluation + CI
 ├── ingestion/
 │   ├── chunker.py             # Sliding-window token chunker
-│   ├── embedder.py            # OpenAI / local embedding (batched)
-│   └── pipeline.py            # Orchestrates chunk → embed → store
+│   ├── embedder.py            # OpenAI / local sentence-transformers
+│   └── pipeline.py            # Orchestrates chunk -> embed -> store
 ├── store/
-│   └── vector_store.py        # Chroma / Weaviate backend
+│   └── vector_store.py        # ChromaDB / Weaviate backend
 ├── retrieval/
 │   ├── retriever.py           # Semantic top-k retrieval + citations
-│   ├── hybrid_retriever.py    # BM25 + vector fusion
+│   ├── hybrid_retriever.py    # BM25 + vector score fusion
 │   ├── reranker.py            # Cross-encoder reranking
 │   ├── bm25_index.py          # BM25 keyword index
 │   └── citation_enforcer.py   # Post-generation citation validation
 ├── eval/
-│   ├── build_dataset.py       # Seed / manage QA evaluation dataset
-│   ├── run_eval.py            # Run evaluation pipeline
+│   ├── build_dataset.py       # QA evaluation dataset management
+│   ├── run_eval.py            # Evaluation runner
 │   ├── scorer.py              # LLM-as-judge faithfulness scorer
 │   └── dataset.jsonl          # Evaluation QA pairs
 ├── tests/
-│   ├── test_phase1.py         # Unit tests — chunker, pipeline, retriever
-│   ├── test_phase2.py         # Unit tests — hybrid, reranker, citations
-│   └── test_phase3.py         # Unit tests — scorer, eval pipeline
-├── .github/workflows/
-│   └── eval.yml               # CI quality gate workflow
+│   ├── test_phase1.py         # Chunker, pipeline, retriever tests
+│   ├── test_phase2.py         # Hybrid search, reranker, citation tests
+│   └── test_phase3.py         # Scorer and evaluation pipeline tests
 ├── main.py                    # End-to-end demo
 └── requirements.txt
 ```
 
----
-
 ## Phases
 
-The pipeline is designed to grow cleanly across three phases. Each phase is fully configured by its own YAML file — no code changes needed to switch.
+Each phase is fully driven by its own YAML config — no code changes needed to switch between them.
 
 ### Phase 1 — Core RAG
 
@@ -102,91 +63,63 @@ The pipeline is designed to grow cleanly across three phases. Each phase is full
 python main.py --config config/phase1.yaml
 ```
 
-- Sliding-window chunking (500–800 tokens, 100 overlap)
+- Sliding-window chunking (500-800 tokens, 100-token overlap)
 - OpenAI `text-embedding-3-small` embeddings
-- ChromaDB vector store with semantic top-k retrieval
-- Inline citation formatting (`[doc_id:chunk_index]`)
+- ChromaDB vector store with cosine similarity search
+- Inline citation formatting: `[doc_id:chunk_index]`
 
-### Phase 2 — Hybrid Search & Reranking
+### Phase 2 — Hybrid Search and Reranking
 
 ```bash
 python main.py --config config/phase2.yaml
 ```
 
-Adds three capabilities on top of Phase 1:
+- Hybrid retrieval: BM25 keyword scores fused with vector similarity (alpha = 0.6/0.4)
+- Cross-encoder reranking with `ms-marco-MiniLM-L-6-v2`
+- Citation enforcement: validates inline citations post-generation, retries on violation
 
-- **Hybrid search** — BM25 keyword scores fused with vector similarity (configurable α = 0.6/0.4)
-- **Cross-encoder reranking** — `ms-marco-MiniLM-L-6-v2` rescores candidates for higher precision
-- **Citation enforcement** — validates that generated answers contain inline citations; retries up to 2× on violation
-
-### Phase 3 — Evaluation & CI
+### Phase 3 — Evaluation and CI
 
 ```bash
 python eval/run_eval.py --config config/phase3.yaml
 ```
 
-Adds automated quality measurement:
+- LLM-as-judge scoring via GPT-4o-mini across four metrics
+- Configurable pass/fail thresholds
+- GitHub Actions quality gate that blocks PRs on metric regression
 
-- **Evaluation dataset** — JSONL file of question/answer/context triples
-- **LLM-as-judge scoring** — GPT-4o-mini judges faithfulness, answer relevance, context recall, and citation coverage
-- **Configurable thresholds** — faithfulness ≥ 0.75, relevance ≥ 0.70, recall ≥ 0.65, citations ≥ 0.80
-- **CI quality gate** — GitHub Actions blocks PRs that regress below thresholds
-
----
-
-## Evaluation
-
-The evaluation framework scores every QA pair on four metrics:
+## Evaluation Metrics
 
 | Metric | What it measures | Default threshold |
 |--------|-----------------|-------------------|
-| **Faithfulness** | Are all answer claims supported by the context? | 0.75 |
-| **Answer Relevance** | Does the answer actually address the question? | 0.70 |
-| **Context Recall** | Does the retrieved context cover the ground truth? | 0.65 |
-| **Citation Coverage** | Does the answer contain valid inline citations? | 0.80 |
+| Faithfulness | Are all answer claims supported by the context? | 0.75 |
+| Answer Relevance | Does the answer address the question? | 0.70 |
+| Context Recall | Does retrieved context cover the ground truth? | 0.65 |
+| Citation Coverage | Does the answer contain valid inline citations? | 0.80 |
 
 ```bash
-# Seed the dataset
+# Seed the evaluation dataset
 python eval/build_dataset.py --mode seed --output eval/dataset.jsonl
 
-# Run full evaluation
+# Full evaluation (requires OPENAI_API_KEY)
 python eval/run_eval.py --config config/phase3.yaml
 
-# Retrieval-only (no LLM cost)
+# Retrieval-only evaluation (no LLM cost)
 python eval/run_eval.py --config config/phase3.yaml --retrieval-only
 ```
 
----
-
-## CI Integration
-
-The included GitHub Actions workflow (`.github/workflows/eval.yml`) runs on every PR to `main`:
-
-1. Installs dependencies & seeds the eval dataset
-2. Runs retrieval-only evaluation (no API key required)
-3. Uploads `eval/report.json` as a build artifact
-4. Posts a metrics summary table to the PR
-5. **Fails the check** if any metric falls below its threshold
-
-To enable full LLM-scored evaluation, add `OPENAI_API_KEY` to your repo secrets.
-
----
-
 ## Switching Vector Stores
 
-Swap from ChromaDB to Weaviate with a single config change:
+Change one line in any config YAML to swap from ChromaDB to Weaviate:
 
 ```yaml
-# In any phaseX.yaml
 vector_store:
-  backend: "weaviate"    # was "chroma"
+  backend: "weaviate"
   weaviate:
     url: "http://localhost:8080"
 ```
 
 No code changes required.
-
----
 
 ## Running Tests
 
@@ -194,20 +127,14 @@ No code changes required.
 pytest tests/ -v
 ```
 
----
+47 tests pass. 7 are skipped when `rank-bm25` or `sentence-transformers` are not installed — install them from `requirements.txt` to run the full suite.
 
 ## Tech Stack
 
-- **Python 3.11+**
-- **OpenAI** — embeddings & generation
-- **ChromaDB / Weaviate** — vector storage
-- **sentence-transformers** — cross-encoder reranking
-- **rank-bm25** — keyword search
-- **Pydantic** — typed configuration
-- **GitHub Actions** — CI evaluation pipeline
-
----
-
-## License
-
-This project is for educational and research purposes.
+- Python 3.11+
+- OpenAI — embeddings and generation
+- ChromaDB / Weaviate — vector storage
+- sentence-transformers — local embeddings and cross-encoder reranking
+- rank-bm25 — keyword search
+- Pydantic — typed configuration
+- GitHub Actions — CI evaluation pipeline
