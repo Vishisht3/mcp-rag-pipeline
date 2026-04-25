@@ -66,8 +66,14 @@ def run_rag_for_sample(
     if retriever is None:
         return "[DRY RUN ANSWER] The answer is here [abcd1234:0].", "No context."
 
-    result  = retriever.retrieve(sample["question"])
-    return result.context_block, result.context_block   # context used as both answer source and context
+    result = retriever.retrieve(sample["question"])
+    # In retrieval-only mode the "answer" is a placeholder; the scorer uses
+    # the context_block to evaluate context recall and citation coverage.
+    answer_placeholder = (
+        f"[Retrieval-only] Retrieved {len(result.chunks)} chunk(s) "
+        f"for: {sample['question']}"
+    )
+    return answer_placeholder, result.context_block
 
 
 def run_full_rag(sample: dict, rag) -> tuple[str, str]:

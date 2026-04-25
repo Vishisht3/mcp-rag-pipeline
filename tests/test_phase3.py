@@ -191,17 +191,19 @@ class TestFaithfulnessScorer:
         scorer._client = mock_client
 
         def fake_judge(prompt: str) -> dict:
-            if "faithfulness" in prompt.lower() or "Context:" in prompt:
+            # Check GT: first — the recall prompt contains both "GT:" and
+            # "Context:", so it must be matched before the faithfulness branch.
+            if "GT:" in prompt:
+                return {"recall_score": 0.75, "reasoning": "Most ground truth is covered."}
+            elif "Question:" in prompt:
+                return {"relevance_score": 0.85, "reasoning": "Directly answers the question."}
+            else:
+                # Faithfulness prompt: "Context: {context}\nAnswer: {answer}"
                 return {
                     "faithfulness_score": 0.9,
                     "claims": [{"claim": "AI is intelligent", "supported": True, "evidence": "..."}],
                     "reasoning": "All claims supported.",
                 }
-            elif "Question:" in prompt:
-                return {"relevance_score": 0.85, "reasoning": "Directly answers the question."}
-            elif "GT:" in prompt:
-                return {"recall_score": 0.75, "reasoning": "Most ground truth is covered."}
-            return {}
 
         scorer._call_judge = fake_judge
         return scorer
