@@ -1,0 +1,19 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local vector store data (rebuilt by ingestion / eval auto-seed)
+chroma_db/
+
+# Environment & secrets
+.env
+.venv/
+venv/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

@@ -1,0 +1,68 @@
+name: RAG Pipeline CI & Quality Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  unit-and-integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate evaluation dataset
+        run: |
+          python eval/build_dataset.py --mode validate --output eval/dataset.jsonl
+
+      - name: Run full test suite
+        run: |
+          pytest tests/ -v
+
+  eval-quality-gate:
+    needs: unit-and-integration-tests
+    runs-on: ubuntu-latest
+    # Note: the `secrets` context is not available in job-level `if:` expressions,
+    # so the key check happens in a step below instead.
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Fresh checkout => empty vector store => run_eval.py seeds the baseline
+      # SAMPLE_DOCS corpus that eval/dataset.jsonl was authored against.
+      - name: Run retrieval-only evaluation (no LLM cost)
+        run: |
+          python eval/run_eval.py --config config/phase3.yaml --retrieval-only
+
+      - name: Run full RAG evaluation quality gate
+        if: ${{ env.OPENROUTER_API_KEY != '' }}
+        run: |
+          python eval/run_eval.py --config config/phase3.yaml
+
